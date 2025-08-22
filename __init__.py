@@ -1,7 +1,7 @@
 bl_info = {
     "name": "Render Complete Sound",
     "author": "817985559@139.com",
-    "version": (1, 5),
+    "version": (1, 6),
     "blender": (2, 80, 0),
     "location": "Properties > Scene",
     "description": "Plays a custom sound when rendering is complete",
@@ -10,6 +10,7 @@ bl_info = {
 import bpy
 from bpy.props import PointerProperty, StringProperty
 from bpy.types import PropertyGroup, Panel, Operator, AddonPreferences
+from bpy.app.handlers import persistent
 import os
 import aud
 
@@ -161,6 +162,7 @@ class RenderCompleteSoundPanel(Panel):
         else:
             layout.label(text="No sound playing.")
 
+@persistent
 def play_sound_on_render_complete(scene):
     global _current_sound_handle
     sound_path = scene.render_complete_sound.sound_file_path
@@ -186,6 +188,12 @@ def play_sound_on_render_complete(scene):
         print(f"An error occurred while playing sound: {e}")
         _current_sound_handle = None
 
+@persistent
+def load_handler(dummy):
+    # 确保在加载文件时正确设置渲染完成回调
+    if play_sound_on_render_complete not in bpy.app.handlers.render_complete:
+        bpy.app.handlers.render_complete.append(play_sound_on_render_complete)
+
 # 定义所有需要注册的类
 classes = (
     RenderCompleteSoundProperties,
@@ -204,6 +212,8 @@ def register():
     # 动态设置Scene属性
     bpy.types.Scene.render_complete_sound = PointerProperty(type=RenderCompleteSoundProperties)
     bpy.app.handlers.render_complete.append(play_sound_on_render_complete)
+    # 添加文件加载处理程序以确保回调在重新打开文件后仍然有效
+    bpy.app.handlers.load_post.append(load_handler)
 
 def unregister():
     global _current_sound_handle
@@ -214,7 +224,10 @@ def unregister():
             print(f"Failed to stop sound on unregister: {e}")
         _current_sound_handle = None
 
-    bpy.app.handlers.render_complete.remove(play_sound_on_render_complete)
+    if play_sound_on_render_complete in bpy.app.handlers.render_complete:
+        bpy.app.handlers.render_complete.remove(play_sound_on_render_complete)
+    if load_handler in bpy.app.handlers.load_post:
+        bpy.app.handlers.load_post.remove(load_handler)
     del bpy.types.Scene.render_complete_sound
     for cls in reversed(classes):
         bpy.utils.unregister_class(cls)
